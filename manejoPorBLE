@@ -1,0 +1,253 @@
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+#include <ArduinoBLE.h>
+
+
+// Objetos
+Adafruit_PWMServoDriver brazo = Adafruit_PWMServoDriver();
+BLEService ledService("180A");
+BLEByteCharacteristic switchCharacteristic("2A57",  BLEWrite);
+
+
+// Dependiendo de la marca de tus servos, pueden variar el pulso mínimo y máximo.
+// Consulta sus especificaciones.
+
+#define SERVOMIN  150 // Pulso mínimo (fuera de 4096)
+#define SERVOMAX  600 // Pulso máximo (fuera de 4096)
+
+int flu = 15;
+
+// Primer servo # de contador
+uint8_t servonum = 0;
+
+void setup() {
+  Serial.begin(9600);
+  brazo.begin();
+  brazo.setPWMFreq(60);  // Servos analógicos funcionan a ~60 Hz actualizado.
+
+
+  if (!BLE.begin()) {
+    Serial.println("No funcionó el Bt");        
+    while (1);
+  }
+  
+  //yield(); 
+    // set advertised local name and service UUID:
+  BLE.setLocalName("BrazoRobotico");
+  BLE.setAdvertisedService(ledService);
+
+  // add the characteristic to the service
+  ledService.addCharacteristic(switchCharacteristic);
+
+  // add service
+  BLE.addService(ledService);
+
+  // set the initial value for the characteristic:
+  switchCharacteristic.writeValue(0);
+
+  // start advertising
+  BLE.advertise();
+
+  Serial.println("Ya estoy por aquí...disponible, como si no tuviera nada que hacer... ");
+}
+
+
+void loop() {
+  /*
+   * Coreografía automática ... descomente todo este bloque si lo que desea es que se mueva autónomamente
+  setear la coreografía
+  Se mueve a la derecha
+  Baja el cuerpo
+  baja el griper
+  Cierra el griper
+  Sube el griper
+  sube el cuerpo
+  Se mueve a la izquierda
+  Baja el cuerpo
+  baja el griper
+  abre el griper
+
+
+  girarDerecha();
+  bajarCuerpo();
+  bajarGriper();
+  abrirGriper();
+  cerrarGriper();
+  subirGriper();
+  subirCuerpo();
+  girarIzquierda();
+  bajarCuerpo();
+  bajarGriper();
+  abrirGriper();
+  cerrarGriper();
+  subirCuerpo();
+  subirGriper();
+  Fin del bloque automático... elimine el comentario siguiente para habilitar el movimiento autónomo
+  */
+
+
+  // Movimiento vía Ble
+  BLEDevice central = BLE.central();
+  if (central) {
+      while (central.connected()) {
+          if (switchCharacteristic.written()) {
+              switch (switchCharacteristic.value()) {
+                  Serial.print("Valor recibido: ");
+                  Serial.println(switchCharacteristic.value());
+
+                // Si se envía un 0 o 1, gira a la derecha o a la izquierda los grados preprogramados
+                   case 0:
+                   // Gira a la derecha
+                   girarDerecha();
+                   break;
+                   case 1:
+                   // Gira a la izquierda
+                   girarIzquierda();
+                   break;
+
+                 // Si se envía un 2 o 3 sube o baja el cuerpo principal del brazo
+                   case 2:
+                   // Baja el brazo
+                   bajarCuerpo();
+                   break;
+                   case 3:
+                   // Sube el brazo
+                   subirCuerpo();
+                   break;
+
+                 // Si se envía un 4 o 5, sube o baja la inclinación del griper
+                   case 4:
+                   // Baja el griper
+                   bajarGriper();
+                   break;
+                   case 5:
+                   // Sube el griper
+                   subirGriper();
+                   break;
+
+                 // Si se envía un 6 o 7, abre y cierra el griper
+                   case 6:
+                   // Abre el griper
+                   abrirGriper();
+                   break;
+                   case 7:
+                   // Cierra el griper
+                   cerrarGriper();
+                   break;
+
+                 // Si se manda algo que no sea nada de lo anterior, va a una posición de inicio
+                   default:
+                   
+                   break;
+                }
+            }
+        }
+        Serial.print(F("Se desconectó de  "));
+        Serial.println(central.address());
+    }
+}
+
+
+
+//------------------------------------------------
+// Funciones que convierte angulos a Pulsos
+//------------------------------------------------
+int anguloApulsar(int ang){ 
+   int pulso = map(ang,0, 180, SERVOMIN,SERVOMAX); 
+   return pulso;
+}
+
+
+//------------------------------------------------
+// Funciones que hacen que rote la base
+//------------------------------------------------
+
+void girarDerecha(){
+  Serial.println("Girando a la derecha");
+  for( int angulo =130; angulo>=50; angulo -=1){
+      brazo.setPWM(0, 0, anguloApulsar(angulo) );
+      delay(flu); 
+    }
+   delay(3000); 
+  }
+
+void girarIzquierda(){
+  Serial.println("Girando a la izquierda");
+    for( int angulo = 50; angulo<130; angulo +=1){
+      delay(flu); 
+      brazo.setPWM(0, 0, anguloApulsar(angulo) );
+    }
+    delay(3000);
+  }
+
+
+//------------------------------------------------  
+// Funciones que hacen que se incline el brazo entero
+//------------------------------------------------
+
+void bajarCuerpo(){
+  Serial.println("Bajando el cuerpo");
+    for( int angulo =110; angulo>=70; angulo -=1){
+      brazo.setPWM(1, 0, anguloApulsar(angulo) );
+      delay(flu); 
+    }
+    delay(3000);
+  }
+
+void subirCuerpo(){
+    Serial.println("Subiendo el cuerpo");
+    for( int angulo = 70; angulo< 110; angulo +=1){
+      brazo.setPWM(1, 0, anguloApulsar(angulo) );
+      delay(flu); 
+    }
+    delay(3000);
+  }
+
+
+
+//------------------------------------------------ 
+// Servo que inclina la muñeca
+//------------------------------------------------
+
+
+void bajarGriper(){
+    Serial.println("Bajando el griper");
+    for( int angulo =120; angulo<150; angulo +=1){
+      brazo.setPWM(2, 0, anguloApulsar(angulo) );
+      delay(flu); 
+    }
+    delay(3000);
+  }
+
+void subirGriper(){
+  Serial.println("Subiendo el griper");
+    for( int angulo =150; angulo>=120; angulo -=1){
+      brazo.setPWM(2, 0, anguloApulsar(angulo) );
+      delay(flu); 
+    }
+    delay(3000);
+  }
+
+ 
+//------------------------------------------------ 
+// servo que controla el gripper
+//------------------------------------------------
+
+void abrirGriper(){
+  Serial.println("Abriendo Griper");
+     for( int angulo =90; angulo>=0; angulo -=1){
+       brazo.setPWM(3, 0, anguloApulsar(angulo) );
+       delay(flu); 
+    }
+      delay(2000);
+  }
+
+void cerrarGriper(){
+  Serial.println("Cerrando Griper");
+  for( int angulo =0; angulo<90; angulo +=1){
+         brazo.setPWM(3, 0, anguloApulsar(0) );
+         Serial.println(angulo);
+         delay(flu); 
+      }
+    delay(2000);
+  }
